@@ -92,6 +92,12 @@ export function Onboarding() {
           learningLevel: 'intermediate'
         })
 
+        // 更新用户状态，标记onboarding完成
+        useAuthStore.getState().setUser({
+          ...useAuthStore.getState().user!,
+          onboarding_completed: true
+        })
+
         speak('设置完成，欢迎来到 Eye Rest OS')
         navigate('/home')
       } else {
