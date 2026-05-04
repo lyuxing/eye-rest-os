@@ -196,3 +196,67 @@ export const updatePreferences = async (data: {
   const response = await api.post('/preferences/', data)
   return response.data
 }
+
+// Recommendation APIs - 获取个性化新闻
+export const fetchPersonalizedNews = async (token: string, limit: number = 10): Promise<NewsItem[]> => {
+  const response = await fetch(`${API_BASE}/recommendations/feed?limit=${limit}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  })
+  if (!response.ok) {
+    throw new Error('Failed to fetch personalized news')
+  }
+  const data = await response.json()
+  return data.news.map((item: any) => ({
+    id: item.id,
+    title: item.title,
+    summary: item.summary,
+    detail: item.detail || item.summary,
+    source: item.source,
+    category: item.category
+  }))
+}
+
+// 记录用户行为
+export const recordAction = async (
+  token: string,
+  actionType: 'view' | 'skip' | 'like' | 'detail',
+  contentType: 'news' | 'phrase',
+  contentId: string,
+  category?: string
+): Promise<void> => {
+  await fetch(`${API_BASE}/recommendations/action`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      action_type: actionType,
+      content_type: contentType,
+      content_id: contentId,
+      category
+    })
+  })
+}
+
+// 标记新闻已读
+export const markNewsRead = async (token: string, newsId: string): Promise<void> => {
+  await fetch(`${API_BASE}/recommendations/read/${newsId}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  })
+}
+
+// 标记新闻跳过
+export const markNewsSkipped = async (token: string, newsId: string): Promise<void> => {
+  await fetch(`${API_BASE}/recommendations/skip/${newsId}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  })
+}

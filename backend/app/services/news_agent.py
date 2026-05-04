@@ -166,17 +166,6 @@ class NewsAgent:
 
     async def get_user_feed(self, user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """获取用户的个性化新闻feed"""
-        # 检查是否需要聚合
-        if self.should_aggregate():
-            # 获取用户感兴趣的类别
-            interests = self.db.query(UserInterest).filter(
-                UserInterest.user_id == user_id,
-                UserInterest.interest_type == "category"
-            ).all()
-
-            categories = [i.interest_value for i in interests] or list(RSS_FEEDS.keys())
-            await self.aggregate_news(categories)
-
         # 获取用户兴趣（类别+关键词）
         user_interests = self.db.query(UserInterest).filter(
             UserInterest.user_id == user_id
@@ -189,7 +178,16 @@ class NewsAgent:
             if interest.interest_type == "category":
                 category_weights[interest.interest_value] = interest.weight
             else:
-                keyword_weights[interest.interest_value] = interest.weight
+                keyword_weights[interest.interest_value.lower()] = interest.weight
+
+        # 检查是否需要聚合
+        if self.should_aggregate():
+            # 优先聚合用户感兴趣的类别
+            if category_weights:
+                categories = list(category_weights.keys())
+            else:
+                categories = list(RSS_FEEDS.keys())
+            await self.aggregate_news(categories)
 
         # 获取未读新闻
         unread_feed = self.db.query(UserNewsFeed).filter(
@@ -213,6 +211,10 @@ class NewsAgent:
         all_news = self.db.query(DailyNews).order_by(
             DailyNews.created_at.desc()
         ).limit(50).all()
+
+        # 如果用户没有兴趣设置，返回按时间排序的新闻
+        if not category_weights and not keyword_weights:
+            return [self._format_news(news, 0.5) for news in all_news[:limit]]
 
         # 计算每条新闻的优先级
         scored_news = []
@@ -243,17 +245,30 @@ class NewsAgent:
         keyword_weights: Dict[str, float]
     ) -> float:
         """计算新闻优先级"""
-        priority = 0.5
+        priority = 0.0
 
-        # 类别匹配
+        # 类别匹配 - 如果新闻类别在用户兴趣中，加分
         if news.category in category_weights:
-            priority += category_weights[news.category] * 0.3
+            priority += 0.4 + category_weights[news.category] * 0.2
 
-        # 关键词匹配
+        # 关键词匹配 - 检查标题和内容中的关键词
         news_keywords = news.get_keywords()
-        for kw in news_keywords:
-            if kw in keyword_weights:
-                priority += keyword_weights[kw] * 0.1
+        news_text = (news.title + " " + news.summary).lower()
+
+        keyword_matches = 0
+        for kw, weight in keyword_weights.items():
+            # 检查AI提取的关键词
+            if kw.lower() in [k.lower() for k in news_keywords]:
+                keyword_matches += 1
+                priority += weight * 0.15
+            # 直接检查文本中是否包含关键词
+            elif kw.lower() in news_text:
+                keyword_matches += 1
+                priority += weight * 0.1
+
+        # 如果匹配了多个关键词，额外加分
+        if keyword_matches >= 3:
+            priority += 0.15
 
         # 时效性权重
         hours_old = (datetime.utcnow() - news.created_at).total_seconds() / 3600
@@ -261,6 +276,10 @@ class NewsAgent:
             priority += 0.2
         elif hours_old < 24:
             priority += 0.1
+
+        # 如果没有匹配任何兴趣，但至少有新闻
+        if priority == 0.0:
+            priority = 0.3  # 基础分数
 
         return min(priority, 1.0)
 

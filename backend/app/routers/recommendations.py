@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
 from ..models.schemas import UserActionCreate, SuccessResponse
-from ..models.db_models import User
+from ..models.db_models import User, DailyNews
 from ..services.auth_service import get_current_user
 from ..services.news_agent import NewsAgent
 from ..services.recommendation_service import RecommendationService
